@@ -42,6 +42,7 @@ svg{display:block}
   width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.75);display:grid;place-items:center}
 .fsBtn svg{width:24px;height:24px}
 
+
 /* ---------- おえかき ---------- */
 #draw{background:#D6AE80 repeating-linear-gradient(176deg,rgba(120,70,30,.06) 0 2px,transparent 2px 23px,rgba(255,255,255,.05) 23px 25px,transparent 25px 61px)}
 .dwrap{position:absolute;inset:0;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
@@ -148,7 +149,7 @@ svg{display:block}
 .set label{font-weight:700;color:#6B5038}
 .set input,.set select{font:inherit;font-size:16px;padding:8px 10px;border:1px solid #CDBFA6;border-radius:8px;background:#fff;-webkit-user-select:text;user-select:text}
 .staff .tools2{display:flex;gap:8px;margin-top:10px}
-.staff .tools2 button{flex:1;height:48px;border-radius:10px;background:#E9DFCC;font-weight:700;font-size:15px}
+.staff .tools2 button{flex:1;min-height:52px;padding:4px 6px;border-radius:10px;background:#E9DFCC;font-weight:700;font-size:13px;line-height:1.3}
 @media (max-width:900px){.steps li span{display:none}}
 #toast{position:fixed;left:50%;bottom:40px;transform:translate(-50%,20px);background:rgba(42,38,34,.92);color:#fff;padding:14px 22px;border-radius:10px;
   font-weight:700;font-size:18px;opacity:0;transition:.25s;pointer-events:none;z-index:40;white-space:nowrap}
@@ -248,7 +249,7 @@ svg{display:block}
       <label for="cIdle">ほうちで もどる</label><select id="cIdle"><option value="60">1ぷん</option><option value="120">2ふん</option><option value="180">3ぷん</option><option value="0">もどらない</option></select>
     </div>
     <div class="acts">
-      <button id="stClear" class="sub">すいそうを からにする</button>
+      <button id="stClear" class="sub">ぜんぶの はいけいの えを けす</button>
       <button id="stReset" class="sub">きろくを けす</button>
       <button id="stClose" class="go" style="flex:1">とじる</button>
     </div>
@@ -637,7 +638,7 @@ $('release').onclick = () => {
   pending = null; $('mvSheet').classList.remove('on');
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.restore();
   hist = []; redoS = []; updEdit(); setDrawn(false); suggest = null;
-  show('scene'); hideHint();
+  show('scene'); updHint();
 };
 
 /* プレビュー */
@@ -842,8 +843,7 @@ function switchScene(k){
   fade = {img: snapC, a: 1};
   sceneKey = k; store.set('sa_scene', k);
   ripples = []; foods = []; attract = null;
-  buildBg(); buildBgButtons();
-  cr.forEach(c => place(c, false));
+  buildBg(); buildBgButtons(); updHint();
 }
 function fitWorld(){
   W = innerWidth; H = innerHeight;
@@ -856,7 +856,7 @@ addEventListener('resize', fitWorld);
 
 /* ---- いきもの ---- */
 function zoneOf(c){
-  const Z = SCENES[sceneKey].zones();
+  const Z = SCENES[c.scene || sceneKey].zones();
   if (GROUND.has(c.m)) return {ground: Z.ground};
   const r = WATERY.has(c.m) ? (Z.water || Z.air) : (Z.air || Z.water);
   return {y0: r[0], y1: r[1]};
@@ -875,16 +875,17 @@ function place(c, fresh){
   else { const [a, b] = range(c); c.y = fresh || c.y == null ? rnd(a, b) : clamp(c.y, a, b); c.ty = rnd(a, b); }
 }
 const SPEED = {swim:[40,70], drift:[10,18], fly:[70,110], hop:[90,140], walk:[26,42], sway:[0,0], spin:[18,32], float:[22,36], dash:[260,360]};
-function addCreature(img, m, face, ratio, fresh){
+function addCreature(img, m, face, ratio, fresh, scene){
   const c = {img, m, face, ratio, k: (.62 + .58 * clamp(ratio, 0, 1)) * rnd(.9, 1.1), dir: Math.random() < .5 ? -1 : 1, ph: rnd(0, 6), seed: rnd(0, 6),
-    sp: rnd(...SPEED[m]), react: 0, rot: 0, sx: 1, sy: 1, bob: 0, alpha: 1, enter: fresh ? 1 : 0, wait: rnd(.3, 1.2), pause: 0, land: 0, jy: 0, jv: 0, src: null};
+    scene: scene || sceneKey, sp: rnd(...SPEED[m]), react: 0, rot: 0, sx: 1, sy: 1, bob: 0, alpha: 1, enter: fresh ? 1 : 0, wait: rnd(.3, 1.2), pause: 0, land: 0, jy: 0, jv: 0, src: null};
   if (fresh) c.dir = face;
   c.vis = (['drift','sway','spin','float'].includes(m)) ? 1 : c.dir * face;
   c.vx = rnd(-14, 14); c.vy = rnd(-12, 12);
   sizeC(c); place(c, true);
   cr.push(c);
-  const alive = cr.filter(x => !x.leave);
+  const alive = cr.filter(x => !x.leave && x.scene === c.scene);
   if (alive.length > MAXC) alive[0].leave = true;
+  updHint();
   return c;
 }
 
@@ -1053,7 +1054,7 @@ function drawFx(dt){
 world.addEventListener('pointerdown', e => {
   const x = e.clientX, y = e.clientY;
   let hit = null;
-  for (let i = cr.length - 1; i >= 0; i--) { const c = cr[i]; if (c.enter > 0 || c.leave) continue; if (Math.abs(x - c.x) < c.w * .5 + 10 && Math.abs(y - c.y) < c.h * .5 + 10) { hit = c; break; } }
+  for (let i = cr.length - 1; i >= 0; i--) { const c = cr[i]; if (c.scene !== sceneKey || c.enter > 0 || c.leave) continue; if (Math.abs(x - c.x) < c.w * .5 + 10 && Math.abs(y - c.y) < c.h * .5 + 10) { hit = c; break; } }
   if (hit) {
     hit.react = 1; burst(x, y, 8);
     if (['swim','fly','dash'].includes(hit.m)) hit.dir = x < hit.x ? 1 : -1;
@@ -1076,10 +1077,11 @@ function loop(now){
     wc.drawImage(bgLayer, 0, 0, W, H);
     const st = sceneState[sceneKey];
     SCENES[sceneKey].dyn(wc, W, H, t, st);
-    cr.forEach(c => update(c, dt));
+    const here = cr.filter(c => c.scene === sceneKey);
+    here.forEach(c => update(c, dt));
     cr = cr.filter(c => !c.dead);
-    cr.filter(c => c.m === 'sway').forEach(c => drawCreature(c, t));
-    cr.filter(c => c.m !== 'sway').forEach(c => drawCreature(c, t));
+    here.filter(c => !c.dead && c.m === 'sway').forEach(c => drawCreature(c, t));
+    here.filter(c => !c.dead && c.m !== 'sway').forEach(c => drawCreature(c, t));
     drawFx(dt);
     if (fade) { fade.a -= dt * 1.6; wc.globalAlpha = Math.max(0, fade.a); wc.drawImage(fade.img, 0, 0, W, H); wc.globalAlpha = 1; if (fade.a <= 0) fade = null; }
   }
@@ -1090,24 +1092,26 @@ function loop(now){
    ほぞん・きろく
    ========================================================= */
 function savePond(){
-  let list = cr.filter(c => !c.leave).slice(-MAXC).map(c => { if (!c.src) c.src = c.img.toDataURL('image/png'); return {s: c.src, m: c.m, f: c.face, r: c.ratio}; });
+  let list = cr.filter(c => !c.leave).slice(-MAXC * 4).map(c => { if (!c.src) c.src = c.img.toDataURL('image/png'); return {s: c.src, m: c.m, f: c.face, r: c.ratio, sc: c.scene}; });
   while (list.length && !store.set('sa_pond', list)) list = list.slice(1);
 }
 function restorePond(){
   const list = store.get('sa_pond', []);
   list.forEach(o => {
     const im = new Image();
-    im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d').drawImage(im, 0, 0); const cc = addCreature(c, o.m, o.f, o.r, false); cc.src = o.s; hideHint(); };
+    im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d').drawImage(im, 0, 0); const cc = addCreature(c, o.m, o.f, o.r, false, o.sc || 'sea'); cc.src = o.s; };
     im.src = o.s;
   });
 }
 function today(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function record(m){
   const s = store.get('sa_stats', {}), d = today();
-  s[d] = s[d] || {n: 0, m: {}}; s[d].n++; s[d].m[m] = (s[d].m[m] || 0) + 1;
+  s[d] = s[d] || {n: 0, m: {}}; s[d].n++; s[d].m[m] = (s[d].m[m] || 0) + 1; s[d].sc = s[d].sc || {}; s[d].sc[sceneKey] = (s[d].sc[sceneKey] || 0) + 1;
   store.set('sa_stats', s);
 }
-function hideHint(){ $('hint').classList.add('off'); }
+function hideHint(){ updHint(); }
+function updHint(){ $('hint').classList.toggle('off', cr.some(c => c.scene === sceneKey && !c.leave)); }
+function clearScene(key){ cr.forEach(c => { if (!key || c.scene === key) c.leave = true; }); setTimeout(savePond, 1600); updHint(); }
 
 /* スタッフ：かんばんを 3びょう ながおし */
 (function(){
@@ -1122,14 +1126,14 @@ function openStaff(){
   let h = `<p>きょう かかれた え</p><div class="big">${td ? td.n : 0} まい</div>`;
   if (td) h += '<p class="note">' + Object.entries(td.m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${names[k] || k} ${v}`).join('　') + '</p>';
   if (days.length) h += '<table><tr><th>ひづけ</th><th>かかれた え</th></tr>' + days.map(d => `<tr><td>${d.slice(5).replace('-', '/')}</td><td><b>${s[d].n}</b> まい</td></tr>`).join('') + '</table>';
-  h += `<p class="note">いま すいそうに いる え：${cr.filter(c => !c.leave).length} まい（さいだい ${MAXC}）<br>きろくは この たんまつの ブラウザに ほぞんされています。</p>`;
+  h += `<p class="note">いま いる え：${Object.entries(SCENES).map(([k, v]) => v.n + ' ' + cr.filter(c => !c.leave && c.scene === k).length).join('・')}（はいけいごとに さいだい ${MAXC}）<br>きろくは この たんまつの ブラウザに ほぞんされています。</p>`;
   $('staffBody').innerHTML = h; fillCfgForm(); $('staff').classList.add('on');
 }
 let armClear = 0, armReset = 0;
 $('stClose').onclick = () => $('staff').classList.remove('on');
 $('stClear').onclick = () => {
   if (Date.now() - armClear > 3000) { armClear = Date.now(); $('stClear').textContent = 'もういちど おすと けします'; return; }
-  cr.forEach(c => c.leave = true); store.set('sa_pond', []); $('stClear').textContent = 'すいそうを からにする'; $('staff').classList.remove('on'); $('hint').classList.remove('off');
+  clearScene(null); store.set('sa_pond', []); $('stClear').textContent = 'ぜんぶの はいけいの えを けす'; $('staff').classList.remove('on');
 };
 $('stReset').onclick = () => {
   if (Date.now() - armReset > 3000) { armReset = Date.now(); $('stReset').textContent = 'もういちど おすと けします'; return; }
@@ -1198,7 +1202,7 @@ setInterval(() => {
    ========================================================= */
 $('toDraw').onclick = () => show('draw');
 $('toScene').onclick = () => show('scene');
-fitWorld(); buildBgButtons(); applyCfg(); restorePond(); updEdit();
+fitWorld(); buildBgButtons(); applyCfg(); restorePond(); updEdit(); updHint();
 requestAnimationFrame(loop);
 </script>
 </body>
